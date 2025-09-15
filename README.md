@@ -31,7 +31,7 @@
 您可以通过 pip 从 PyPI 安装：
 
 ```bash
-pip install jieba-ng
+pip install jieba-next
 ```
 
 或者从源码安装：
