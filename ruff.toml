@@ -1,0 +1,39 @@
+line-length = 88
+target-version = "py38"
+preview = true
+
+[lint]
+select = [
+    "F",
+    "E",
+    "W",
+    "I",
+    "UP",
+    "N",
+    "ASYNC",
+    "B",
+    "A",
+    "C4",
+    "FA",
+    "ICN",
+    "LOG",
+    "G",
+    "PIE",
+    "PT",
+    "Q",
+    "RSE",
+    "TC",
+    "PTH",
+    "NPY",
+    "PERF",
+    "FURB",
+]
+ignore = ["PIE804", "G004", "F401", "N802", "N803", "N806", "N811", "N816"]
+
+[lint.per-file-ignores]
+"__init__.py" = ["F401"]
+"test_*.py" = ["E402", "E501"]
+
+[format]
+quote-style = "double"
+preview = true

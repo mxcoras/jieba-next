@@ -1,0 +1,125 @@
+name: Build and publish to PyPI on tag
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  build-wheels:
+    name: Build wheels (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-2022, macos-13, macos-14]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up QEMU (for aarch64 on Linux)
+        if: runner.os == 'Linux'
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install cibuildwheel==2.21.3
+
+      - name: Build wheels
+        env:
+          CIBW_BUILD_VERBOSITY: 1
+          # On Linux, also build aarch64 via QEMU emulation
+          CIBW_ARCHS_LINUX: x86_64 aarch64
+          # On macOS, cibuildwheel auto-detects: x86_64 on macos-13, arm64 on macos-14
+          CIBW_SKIP: cp36-* cp37-*
+          CIBW_BUILD: cp38-* cp39-* cp310-* cp311-* cp312-* cp313-*
+          CIBW_TEST_COMMAND: "python -c 'import jieba_next; print(jieba_next.__version__)'"
+        run: |
+          python -m cibuildwheel --output-dir wheelhouse
+
+      - name: Upload wheels artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.os }}
+          path: wheelhouse/*.whl
+
+  build-sdist:
+    name: Build sdist
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Build sdist
+        run: |
+          python -m pip install --upgrade pip
+          pip install build
+          python -m build --sdist --outdir dist
+
+      - name: Upload sdist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: dist/*.tar.gz
+
+  publish:
+    name: Publish to PyPI
+    needs: [build-wheels, build-sdist]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      id-token: write  # for future OIDC trusted publishing if enabled
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Flatten artifact directory
+        shell: bash
+        run: |
+          shopt -s globstar
+          mkdir -p upload
+          mv dist/**/**/*.whl upload/ || true
+          mv dist/**/*.whl upload/ || true
+          mv dist/**/**/*.tar.gz upload/ || true
+          mv dist/**/*.tar.gz upload/ || true
+          ls -al upload
+
+      - name: Verify tag matches version in pyproject
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF##*/}"
+          VERSION=$(python -c "import tomllib,sys;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          if [[ "$TAG" != v$VERSION ]]; then
+            echo "Tag $TAG does not match version $VERSION in pyproject.toml" >&2
+            exit 1
+          fi
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: upload
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          skip-existing: true
