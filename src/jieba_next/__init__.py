@@ -18,10 +18,16 @@ from math import log
 from pathlib import Path
 from typing import TYPE_CHECKING, TextIO
 
+from . import finalseg, jieba_next_functions
+
 if TYPE_CHECKING:
     from collections.abc import Iterator, MutableMapping, Sequence
 
-from . import finalseg, jieba_next_functions
+if os.name == "nt":
+    from shutil import move as _replace_file
+else:
+    _replace_file = os.rename
+
 
 __license__ = "MIT"
 
@@ -31,25 +37,21 @@ except Exception:  # fallback when package metadata unavailable (editable instal
     __version__ = "0.0.0"
 
 
-if os.name == "nt":
-    from shutil import move as _replace_file
-else:
-    _replace_file = os.rename
-
 DEFAULT_DICT = None
 DEFAULT_DICT_NAME = "dict.txt"
-
-log_console = logging.StreamHandler(sys.stderr)
-default_logger = logging.getLogger(__name__)
-default_logger.setLevel(logging.DEBUG)
-default_logger.addHandler(log_console)
-
 DICT_WRITING = {}
+_CACHE_ENV_VAR = "JIEBA_NEXT_CACHE_DIR"
+
+_cache_dir_override: Path | None = None
+
+
+default_logger = logging.getLogger(__name__)
+default_logger.addHandler(logging.NullHandler())
+
 
 pool = None
 
 re_userdict = re.compile("^(.+?)( [0-9]+)?( [a-z]+)?$", re.UNICODE)
-
 re_eng = re.compile("[a-zA-Z0-9]", re.UNICODE)
 
 # \u4E00-\u9FD5a-zA-Z0-9+#&\._ : All non-space characters. Will be handled with re_han
@@ -58,6 +60,45 @@ re_han_default = re.compile("([\u4e00-\u9fd5a-zA-Z0-9+#&\\._%]+)", re.UNICODE)
 re_skip_default = re.compile("(\r\n|\\s)", re.UNICODE)
 re_han_cut_all = re.compile("([\u4e00-\u9fd5]+)", re.UNICODE)
 re_skip_cut_all = re.compile("[^a-zA-Z0-9+#\n]", re.UNICODE)
+
+
+def _user_cache_dir(app_name: str, app_author: str | None = None) -> str:
+    """Return a per-user cache directory path cross-platform without external deps.
+
+    Rough logic:
+    * Windows: %LOCALAPPDATA%/<AppName> or %APPDATA% fallback.
+    * macOS: ~/Library/Caches/<AppName>
+    * Linux/Unix: $XDG_CACHE_HOME/<AppName> or ~/.cache/<AppName>
+    """
+    name = app_name or "jieba-next"
+    if os.name == "nt":  # Windows
+        base = (
+            os.environ.get("LOCALAPPDATA")
+            or os.environ.get("APPDATA")
+            or tempfile.gettempdir()
+        )
+        return str(Path(base) / name)
+    if sys.platform == "darwin":  # macOS
+        return str(Path.home() / "Library" / "Caches" / name)
+    xdg = os.environ.get("XDG_CACHE_HOME")  # Linux / other Unix
+    if xdg:
+        return str(Path(xdg) / name)
+    return str(Path.home() / ".cache" / name)
+
+
+def configure_logging(level: int | str = logging.INFO, *, stream=None) -> None:
+    """Configure a basic stream handler for jieba_next (idempotent)."""
+    if not any(isinstance(h, logging.StreamHandler) for h in default_logger.handlers):
+        handler = logging.StreamHandler(stream or sys.stderr)
+        formatter = logging.Formatter("%(levelname)s %(name)s: %(message)s")
+        handler.setFormatter(formatter)
+        default_logger.addHandler(handler)
+    default_logger.setLevel(level)
+
+
+def enable_default_logging() -> None:
+    """Enable INFO level logging with a basic handler if none configured."""
+    configure_logging(logging.INFO)
 
 
 def setLogLevel(log_level):
@@ -75,7 +116,68 @@ def setLogLevel(log_level):
 
 def set_log_level(log_level):
     """Set logging level for jieba_next's default logger."""
-    default_logger.setLevel(log_level)
+    configure_logging(log_level)
+
+
+class JiebaError(Exception):
+    """Base exception for jieba_next."""
+
+
+class DictionaryFormatError(JiebaError):
+    """Raised when dictionary file has invalid formatting."""
+
+
+class DictionaryNotFoundError(JiebaError):
+    """Raised when specified dictionary path does not exist."""
+
+
+def set_cache_dir(path: str | Path) -> None:
+    """Override the cache directory used for prefix dict caches."""
+    global _cache_dir_override
+    p = Path(path).expanduser().resolve()
+    p.mkdir(parents=True, exist_ok=True)
+    _cache_dir_override = p
+    default_logger.debug("Cache directory overridden: %s", p)
+
+
+def get_cache_dir() -> Path:
+    if _cache_dir_override is not None:
+        return _cache_dir_override
+    env_dir = os.environ.get(_CACHE_ENV_VAR)
+    if env_dir:
+        p = Path(env_dir).expanduser()
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+    if _user_cache_dir is not None:
+        base = Path(_user_cache_dir("jieba-next", "jieba-next"))
+        base.mkdir(parents=True, exist_ok=True)
+        return base
+    # fallback
+    fallback = Path(tempfile.gettempdir()) / "jieba-next-cache"
+    fallback.mkdir(parents=True, exist_ok=True)
+    return fallback
+
+
+def _cache_file_name(abs_path: str | Path | None) -> str:
+    if not abs_path or abs_path == DEFAULT_DICT:
+        return "jieba-next.cache"
+    abs_str = str(abs_path)
+    return f"jieba-next.u{md5(abs_str.encode('utf-8', 'replace')).hexdigest()}.cache"
+
+
+def _resolve_cache_file(abs_path: str | Path | None) -> Path:
+    return get_cache_dir() / _cache_file_name(abs_path)
+
+
+def open_dict_resource(dictionary: str | Path | None) -> TextIO:
+    """Open dictionary path or built-in resource and return a text stream."""
+    if dictionary in (None, DEFAULT_DICT):
+        dict_path = _pkg_files(__package__).joinpath(DEFAULT_DICT_NAME)
+        return Path(dict_path).open(encoding="utf-8")
+    p = Path(dictionary).expanduser()
+    if not p.is_file():
+        raise DictionaryNotFoundError(f"dictionary file does not exist: {p}")
+    return p.open(encoding="utf-8")
 
 
 class Tokenizer:
@@ -102,7 +204,7 @@ class Tokenizer:
         for lineno, line in enumerate(f, 1):
             line_parts = line.strip().split(" ")
             if len(line_parts) < 2 or not line_parts[1].isdigit():
-                raise ValueError(
+                raise DictionaryFormatError(
                     f"invalid dictionary entry in {f_name} at Line {lineno}: {line}"
                 )
             word, freq = line_parts[:2]
@@ -140,32 +242,25 @@ class Tokenizer:
                 "Building prefix dict from %s ...", abs_path or "the default dictionary"
             )
             t1 = time.time()
-            if self.cache_file:
-                cache_file = self.cache_file
-            # default dictionary
-            elif abs_path == DEFAULT_DICT:
-                cache_file = "jieba.cache"
-            # custom dictionary
-            else:
-                cache_file = (
-                    f"jieba.u{md5(abs_path.encode('utf-8', 'replace')).hexdigest()}"
-                    ".cache"
-                )
-            cache_file = Path(self.tmp_dir or tempfile.gettempdir()) / cache_file
-            # prevent absolute path in self.cache_file
-            tmpdir = Path(cache_file).parent
+            cache_file = (
+                Path(self.cache_file)
+                if self.cache_file
+                else _resolve_cache_file(abs_path)
+            )
+            tmpdir = cache_file.parent
 
             load_from_cache_fail = True
-            if Path(cache_file).is_file() and (
+            if cache_file.is_file() and (
                 abs_path == DEFAULT_DICT
-                or Path(cache_file).stat().st_mtime > Path(abs_path).stat().st_mtime
+                or cache_file.stat().st_mtime > Path(abs_path).stat().st_mtime
             ):
-                default_logger.debug("Loading model from cache %s", cache_file)
+                default_logger.debug("Loading model cache: %s", cache_file)
                 try:
                     with cache_file.open("rb") as cf:
                         self.FREQ, self.total = marshal.load(cf)
                     load_from_cache_fail = False
                 except Exception:
+                    default_logger.warning("Failed to load cache, rebuilding.")
                     load_from_cache_fail = True
 
             if load_from_cache_fail:
@@ -173,7 +268,7 @@ class Tokenizer:
                 DICT_WRITING[abs_path] = wlock
                 with wlock:
                     self.FREQ, self.total = self.gen_pfdict(self.get_dict_file())
-                    default_logger.debug("Dumping model to file cache %s", cache_file)
+                    default_logger.debug("Writing model cache: %s", cache_file)
                     try:
                         # prevent moving across different filesystems
                         fd, fpath = tempfile.mkstemp(dir=tmpdir)
@@ -181,7 +276,7 @@ class Tokenizer:
                             marshal.dump((self.FREQ, self.total), temp_cache_file)
                         _replace_file(fpath, cache_file)
                     except Exception:
-                        default_logger.exception("Dump cache file failed.")
+                        default_logger.exception("Failed persisting cache file")
 
                 try:
                     del DICT_WRITING[abs_path]
@@ -189,8 +284,12 @@ class Tokenizer:
                     pass
 
             self.initialized = True
-            default_logger.debug("Loading model cost %.3f seconds.", time.time() - t1)
-            default_logger.debug("Prefix dict has been built succesfully.")
+            default_logger.info(
+                "Loaded prefix dict in %.3fs (entries=%d)",
+                time.time() - t1,
+                len(self.FREQ),
+            )
+            default_logger.debug("Prefix dict built successfully")
 
     def check_initialized(self) -> None:
         if not self.initialized:
@@ -391,11 +490,7 @@ class Tokenizer:
         return self.lcut_for_search(sentence, False)
 
     def get_dict_file(self) -> TextIO:
-        if self.dictionary == DEFAULT_DICT:
-            dict_path = _pkg_files(__package__).joinpath(DEFAULT_DICT_NAME)
-            return Path(dict_path).open(encoding="utf-8")
-        else:
-            return Path(self.dictionary).open(encoding="utf-8")
+        return open_dict_resource(self.dictionary)
 
     def load_userdict(self, f: str | Path | TextIO) -> None:
         """
@@ -524,7 +619,9 @@ class Tokenizer:
         with self.lock:
             abs_path = Path(dictionary_path).resolve()
             if not Path(abs_path).is_file():
-                raise Exception("jieba: file does not exist: " + abs_path)
+                raise DictionaryNotFoundError(
+                    f"jieba_next: file does not exist: {abs_path}"
+                )
             self.dictionary = abs_path
             self.initialized = False
 
@@ -584,6 +681,8 @@ __all__ = [
     # Logging
     "set_log_level",
     "setLogLevel",
+    "configure_logging",
+    "enable_default_logging",
     # Core operations
     "add_word",
     "calc",
@@ -602,6 +701,14 @@ __all__ = [
     "suggest_freq",
     "tokenize",
     "user_word_tag_tab",
+    # Cache helpers
+    "set_cache_dir",
+    "get_cache_dir",
+    "open_dict_resource",
+    # Exceptions
+    "JiebaError",
+    "DictionaryFormatError",
+    "DictionaryNotFoundError",
     # Metadata
     "__version__",
     "__license__",
