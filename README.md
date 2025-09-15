@@ -2,8 +2,9 @@
 
 [![PyPI version](https://badge.fury.io/py/jieba-next.svg)](https://badge.fury.io/py/jieba-next)
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/jieba-next.svg)](https://pypi.org/project/jieba-next/)
-[![Build Status](https://img.shields.io/github/actions/workflow/status/mxcoras/jieba-next/ci.yml?branch=main)](https://github.com/mxcoras/jieba-next/actions)
-[![Downloads](https://pepy.tech/badge/jieba-next)](https://pepy.tech/project/jieba-next)
+[![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/mxcoras/jieba-next/publish-pypi.yml?branch=main&style=flat-square)](https://github.com/mxcoras/jieba-next/actions)
+[![PyPI - Downloads](https://img.shields.io/pypi/dd/jieba-next.svg)](https://pypistats.org/packages/jieba-next)
+[![License](https://img.shields.io/pypi/l/jieba-next.svg)](https://opensource.org/licenses/MIT)
 
 `jieba-next` 是 [jieba_fast](https://github.com/deepcs233/jieba_fast) 的一个现代化分支，旨在提供对 Python 3.8+ 的支持，并利用 Cython 进行了代码优化和加速。
 
@@ -15,7 +16,7 @@
 - **性能**：利用 Cython 重新实现了生成 DAG（有向无环图）及计算最优路径的算法，以提升分词速度。
 - **兼容性**：力求与原版 `jieba` 和 `jieba_fast` 的分词结果保持一致。
 - **易于安装**：使用现代化的构建工具，提供多平台的预编译二进制包（wheels），简化安装过程。
-- **易于使用**：可以作为 `jieba` 的直接替代品，只需 `import jieba_ng as jieba`。
+- **易于使用**：可以作为 `jieba` 的直接替代品，只需 `import jieba_next as jieba`。
 
 ## 当前状态
 
@@ -49,7 +50,7 @@ pip install .
 ```python
 import jieba_next as jieba
 
-text = "在输出层后再增加CRF层，加强了文本间信息的相关性，针对序列标注问题，每个句子的每个词都有一个标注结果，对句子中第i个词进行高维特征的抽取，通过学习特征到标注结果的映射，可以得到特征到任>      意标签的概率，通过这些概率，得到最优序列结果"
+text = "在输出层后再增加CRF层，加强了文本间信息的相关性，针对序列标注问题，每个句子的每个词都有一个标注结果，对句子中第i个词进行高维特征的抽取，通过学习特征到标注结果的映射，可以得到特征到任意标签的概率，通过这些概率，得到最优序列结果"
 
 print("-".join(jieba.lcut(text, HMM=True)))
 print('-'.join(jieba.lcut(text, HMM=False)))
