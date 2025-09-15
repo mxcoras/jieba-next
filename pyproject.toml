@@ -1,17 +1,17 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel", "cython"]
+requires = ["setuptools>=61.0", "wheel", "cython", "setuptools-scm>=8"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "jieba-next"
-version = "1.0.0-alpha.2"
+dynamic = ["version"]
 authors = [
   { name="mxcoras", email="mxcoras@outlook.com" },
 ]
-description = "Modernized fork of jieba_fast, with python 3.8+ support and Cython speedups."
+description = "Modernized fork of jieba_fast, with python 3.9+ support and Cython speedups."
 readme = "README.md"
 license = { text = "MIT" }
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 keywords = ["NLP", "tokenizing"]
 classifiers = [
     'Intended Audience :: Developers',
@@ -20,7 +20,6 @@ classifiers = [
     'Natural Language :: Chinese (Traditional)',
     'Programming Language :: Python',
     'Programming Language :: Python :: 3',
-    'Programming Language :: Python :: 3.8',
     'Programming Language :: Python :: 3.9',
     'Programming Language :: Python :: 3.10',
     'Programming Language :: Python :: 3.11',
@@ -41,8 +40,11 @@ test = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/mxcoras/jieba-ng"
-"Bug Tracker" = "https://github.com/mxcoras/jieba-ng/issues"
+"Homepage" = "https://github.com/mxcoras/jieba-next"
+"Bug Tracker" = "https://github.com/mxcoras/jieba-next/issues"
+
+[project.scripts]
+jieba-next = "jieba_next.__main__:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -57,3 +59,6 @@ packages = {find = {where = ["src"]}}
     "posseg/*.py",
     "analyse/*.py",
 ]
+
+[tool.setuptools_scm]
+fallback_version = "0.0.0"

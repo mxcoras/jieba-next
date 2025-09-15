@@ -1,5 +1,4 @@
 from operator import itemgetter
-from os.path import abspath, dirname, isfile, join
 from pathlib import Path
 
 import jieba_next

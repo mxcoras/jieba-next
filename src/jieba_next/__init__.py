@@ -1,6 +1,3 @@
-__version__ = "1.0.0"
-__license__ = "MIT"
-
 import logging
 import marshal
 import os
@@ -10,11 +7,21 @@ import sys
 import tempfile
 import threading
 import time
+import warnings
 from hashlib import md5
+from importlib import resources as _resources
+from importlib.metadata import version as _pkg_version
+from importlib.resources import files as _pkg_files
 from math import log
 from pathlib import Path
 
 from . import finalseg, jieba_next_functions
+
+try:
+    __version__ = _pkg_version("jieba-next")
+except Exception:  # fallback when package metadata unavailable (editable install)
+    __version__ = "0.0.0"
+
 
 if os.name == "nt":
     from shutil import move as _replace_file
@@ -46,7 +53,20 @@ re_skip_cut_all = re.compile("[^a-zA-Z0-9+#\n]", re.UNICODE)
 
 
 def setLogLevel(log_level):
-    global logger
+    """Deprecated. Use set_log_level.
+
+    Retained for compatibility with jieba/jieba_fast.
+    """
+    warnings.warn(
+        "setLogLevel is deprecated, use set_log_level instead",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    default_logger.setLevel(log_level)
+
+
+def set_log_level(log_level):
+    """Set logging level for jieba_next's default logger."""
     default_logger.setLevel(log_level)
 
 
@@ -357,8 +377,8 @@ class Tokenizer:
 
     def get_dict_file(self):
         if self.dictionary == DEFAULT_DICT:
-            # Use __file__ to find the path to the current module
-            return Path(Path(__file__).parent, DEFAULT_DICT_NAME).open(encoding="utf-8")
+            dict_path = _pkg_files(__package__).joinpath(DEFAULT_DICT_NAME)
+            return Path(dict_path).open(encoding="utf-8")
         else:
             return Path(self.dictionary).open(encoding="utf-8")
 
