@@ -61,3 +61,4 @@ packages = {find = {where = ["src"]}}
 
 [tool.setuptools_scm]
 fallback_version = "0.0.0"
+local_scheme = "no-local-version"
