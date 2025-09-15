@@ -17,6 +17,8 @@ from pathlib import Path
 
 from . import finalseg, jieba_next_functions
 
+__license__ = "MIT"
+
 try:
     __version__ = _pkg_version("jieba-next")
 except Exception:  # fallback when package metadata unavailable (editable install)
@@ -516,7 +518,21 @@ dt = Tokenizer()
 
 
 # global functions
+def get_freq(key, default=None):
+    """Get word frequency from the in-memory dictionary.
+
+    Preferred new name. Returns `default` when key not found.
+    """
+    return dt.FREQ.get(key, default)
+
+
 def get_FREQ(k, d=None):
+    """Deprecated alias of get_freq."""
+    warnings.warn(
+        "get_FREQ is deprecated, use get_freq instead",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     return dt.FREQ.get(k, d)
 
 
@@ -541,3 +557,35 @@ def _replace_file(src, dest):
     # rename can't be used across different file systems
     shutil.copy(src, dest)
     Path(src).unlink()
+
+
+# Explicit public API
+__all__ = [
+    # Core types/instances
+    "Tokenizer",
+    "dt",
+    # Logging
+    "set_log_level",
+    "setLogLevel",
+    # Core operations
+    "add_word",
+    "calc",
+    "cut",
+    "cut_for_search",
+    "del_word",
+    "get_DAG",
+    "get_dict_file",
+    "get_freq",
+    "get_FREQ",
+    "initialize",
+    "lcut",
+    "lcut_for_search",
+    "load_userdict",
+    "set_dictionary",
+    "suggest_freq",
+    "tokenize",
+    "user_word_tag_tab",
+    # Metadata
+    "__version__",
+    "__license__",
+]

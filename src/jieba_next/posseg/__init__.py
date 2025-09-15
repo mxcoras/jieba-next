@@ -297,3 +297,14 @@ lcut = dt.lcut
 _lcut = dt._lcut
 _lcut_no_hmm = dt._lcut_no_hmm
 initialize = dt.initialize
+
+
+# Explicit public API for posseg
+__all__ = [
+    "Pair",
+    "POSTokenizer",
+    "dt",
+    "cut",
+    "lcut",
+    "initialize",
+]

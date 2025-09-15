@@ -17,3 +17,15 @@ textrank = default_textrank.extract_tags
 def set_stop_words(stop_words_path):
     default_tfidf.set_stop_words(stop_words_path)
     default_textrank.set_stop_words(stop_words_path)
+
+
+__all__ = [
+    "ChineseAnalyzer",
+    "TFIDF",
+    "TextRank",
+    "extract_tags",
+    "tfidf",
+    "set_idf_path",
+    "textrank",
+    "set_stop_words",
+]
