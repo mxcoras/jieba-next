@@ -53,9 +53,7 @@ packages = {find = {where = ["src"]}}
 [tool.setuptools.package-data]
 "jieba_next" = [
     "*.txt",
-    "finalseg/*.p",
     "finalseg/*.py",
-    "posseg/*.p",
     "posseg/*.py",
     "analyse/*.py",
 ]

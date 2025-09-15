@@ -1,22 +1,20 @@
 from __future__ import annotations
 
-import pickle
 import re
-import sys
-from pathlib import Path
 from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from collections.abc import Iterator
 
 import jieba_next
 
+from .char_state_tab import P as char_state_tab_P
+from .prob_emit import P as emit_P
+from .prob_start import P as start_P
+from .prob_trans import P as trans_P
 from .viterbi import viterbi
 
-PROB_START_P = "prob_start.p"
-PROB_TRANS_P = "prob_trans.p"
-PROB_EMIT_P = "prob_emit.p"
-CHAR_STATE_TAB_P = "char_state_tab.p"
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+    from pathlib import Path
+
 
 re_han_detail = re.compile(r"([\u4E00-\u9FD5]+)")
 re_skip_detail = re.compile(r"([\.0-9]+|[a-zA-Z0-9]+)")
@@ -27,28 +25,6 @@ re_eng = re.compile(r"[a-zA-Z0-9]+")
 re_num = re.compile(r"[\.0-9]+")
 
 re_eng1 = re.compile(r"^[a-zA-Z0-9]$", re.UNICODE)
-
-
-def load_model():
-    # For Jython
-    def load_p(filename):
-        with Path(Path(__file__).parent / filename).open("rb") as f:
-            return pickle.load(f)
-
-    start_p = load_p(PROB_START_P)
-    trans_p = load_p(PROB_TRANS_P)
-    emit_p = load_p(PROB_EMIT_P)
-    state = load_p(CHAR_STATE_TAB_P)
-    return state, start_p, trans_p, emit_p
-
-
-if sys.platform.startswith("java"):
-    char_state_tab_P, start_P, trans_P, emit_P = load_model()
-else:
-    from .char_state_tab import P as char_state_tab_P
-    from .prob_emit import P as emit_P
-    from .prob_start import P as start_P
-    from .prob_trans import P as trans_P
 
 
 class Pair:
