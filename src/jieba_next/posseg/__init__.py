@@ -1,7 +1,13 @@
+from __future__ import annotations
+
 import pickle
 import re
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 import jieba_next
 
@@ -46,58 +52,68 @@ else:
 
 
 class Pair:
-    def __init__(self, word, flag):
+    """词与词性二元组。保持与原始 jieba 兼容的可迭代/比较行为。"""
+
+    word: str
+    flag: str
+
+    def __init__(self, word: str, flag: str):
         self.word = word
         self.flag = flag
 
-    def __unicode__(self):
+    def __unicode__(self) -> str:
         return f"{self.word}/{self.flag}"
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"pair({self.word!r}, {self.flag!r})"
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.__unicode__()
 
-    def __iter__(self):
+    def __iter__(self):  # -> Iterator[str]
         return iter((self.word, self.flag))
 
-    def __lt__(self, other):
+    def __lt__(self, other: object) -> bool:
+        if not isinstance(other, Pair):
+            return NotImplemented
         return self.word < other.word
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
         return (
             isinstance(other, Pair)
             and self.word == other.word
             and self.flag == other.flag
         )
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash(self.word)
 
-    def encode(self, arg):
+    def encode(self, arg: str) -> bytes:
         return self.__unicode__().encode(arg)
 
 
 class POSTokenizer:
-    def __init__(self, tokenizer=None):
+    tokenizer: jieba_next.Tokenizer
+    word_tag_tab: dict[str, str]
+
+    def __init__(self, tokenizer: jieba_next.Tokenizer | None = None):
         self.tokenizer = tokenizer or jieba_next.Tokenizer()
         self.load_word_tag(self.tokenizer.get_dict_file())
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<POSTokenizer tokenizer={self.tokenizer!r}>"
 
-    def __getattr__(self, name):
+    def __getattr__(self, name: str):
         if name in ("cut_for_search", "lcut_for_search", "tokenize"):
             # may be possible?
             raise NotImplementedError
         return getattr(self.tokenizer, name)
 
-    def initialize(self, dictionary=None):
+    def initialize(self, dictionary: str | Path | None = None) -> None:
         self.tokenizer.initialize(dictionary)
         self.load_word_tag(self.tokenizer.get_dict_file())
 
-    def load_word_tag(self, f):
+    def load_word_tag(self, f) -> None:  # TextIO but keep loose for compatibility
         self.word_tag_tab = {}
         f_name = getattr(f, "name", "stream")
         for lineno, line in enumerate(f, 1):
@@ -113,12 +129,12 @@ class POSTokenizer:
                 ) from e
         f.close()
 
-    def makesure_userdict_loaded(self):
+    def makesure_userdict_loaded(self) -> None:
         if self.tokenizer.user_word_tag_tab:
             self.word_tag_tab.update(self.tokenizer.user_word_tag_tab)
             self.tokenizer.user_word_tag_tab = {}
 
-    def __cut(self, sentence):
+    def __cut(self, sentence: str) -> Iterator[Pair]:
         prob, pos_list = viterbi(sentence, char_state_tab_P, start_P, trans_P, emit_P)
         begin, nexti = 0, 0
 
@@ -135,7 +151,7 @@ class POSTokenizer:
         if nexti < len(sentence):
             yield Pair(sentence[nexti:], pos_list[nexti][1])
 
-    def __cut_detail(self, sentence):
+    def __cut_detail(self, sentence: str) -> Iterator[Pair]:
         blocks = re_han_detail.split(sentence)
         for blk in blocks:
             if re_han_detail.match(blk):
@@ -151,7 +167,7 @@ class POSTokenizer:
                         else:
                             yield Pair(x, "x")
 
-    def __cut_DAG_NO_HMM(self, sentence):
+    def __cut_DAG_NO_HMM(self, sentence: str) -> Iterator[Pair]:
         DAG = self.tokenizer.get_DAG(sentence)
         route = {}
         self.tokenizer.calc(sentence, DAG, route)
@@ -174,7 +190,7 @@ class POSTokenizer:
             yield Pair(buf, "eng")
             buf = ""
 
-    def __cut_DAG(self, sentence):
+    def __cut_DAG(self, sentence: str) -> Iterator[Pair]:
         DAG = self.tokenizer.get_DAG(sentence)
         route = {}
 
@@ -214,7 +230,7 @@ class POSTokenizer:
                 for elem in buf:
                     yield Pair(elem, self.word_tag_tab.get(elem, "x"))
 
-    def __cut_internal(self, sentence, HMM=True):
+    def __cut_internal(self, sentence: str, HMM: bool = True) -> Iterator[Pair]:
         self.makesure_userdict_loaded()
         blocks = re_han_internal.split(sentence)
         if HMM:
@@ -238,13 +254,13 @@ class POSTokenizer:
                             else:
                                 yield Pair(xx, "x")
 
-    def _lcut_internal(self, sentence):
+    def _lcut_internal(self, sentence: str) -> list[Pair]:
         return list(self.__cut_internal(sentence))
 
-    def _lcut_internal_no_hmm(self, sentence):
+    def _lcut_internal_no_hmm(self, sentence: str) -> list[Pair]:
         return list(self.__cut_internal(sentence, False))
 
-    def cut(self, sentence, HMM=True):
+    def cut(self, sentence: str, HMM: bool = True):  # -> Iterator[Pair]
         self.makesure_userdict_loaded()
 
         if HMM:
@@ -282,14 +298,14 @@ class POSTokenizer:
                         else:
                             yield Pair(x, "x")
 
-    def lcut(self, *args, **kwargs):
+    def lcut(self, *args, **kwargs) -> list[Pair]:
         return list(self.cut(*args, **kwargs))
 
 
 # default Tokenizer instance
 
 
-dt = POSTokenizer(jieba_next.dt)
+dt: POSTokenizer = POSTokenizer(jieba_next.dt)
 
 # global functions
 cut = dt.cut

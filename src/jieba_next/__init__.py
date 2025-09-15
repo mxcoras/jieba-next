@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 import marshal
 import os
@@ -14,6 +16,10 @@ from importlib.metadata import version as _pkg_version
 from importlib.resources import files as _pkg_files
 from math import log
 from pathlib import Path
+from typing import TYPE_CHECKING, TextIO
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator, MutableMapping, Sequence
 
 from . import finalseg, jieba_next_functions
 
@@ -73,7 +79,7 @@ def set_log_level(log_level):
 
 
 class Tokenizer:
-    def __init__(self, dictionary=DEFAULT_DICT):
+    def __init__(self, dictionary: str | Path | None = DEFAULT_DICT):
         self.lock = threading.RLock()
         if dictionary == DEFAULT_DICT:
             self.dictionary = dictionary
@@ -89,9 +95,9 @@ class Tokenizer:
     def __repr__(self):
         return f"<Tokenizer dictionary={self.dictionary!r}>"
 
-    def gen_pfdict(self, f):
-        lfreq = {}
-        ltotal = 0
+    def gen_pfdict(self, f: TextIO) -> tuple[dict[str, int], int]:
+        lfreq: dict[str, int] = {}
+        ltotal: int = 0
         f_name = getattr(f, "name", "stream")
         for lineno, line in enumerate(f, 1):
             line_parts = line.strip().split(" ")
@@ -110,7 +116,7 @@ class Tokenizer:
         f.close()
         return lfreq, ltotal
 
-    def initialize(self, dictionary=None):
+    def initialize(self, dictionary: str | Path | None = None) -> None:
         if dictionary:
             abs_path = Path(dictionary).resolve()
             if self.dictionary == abs_path and self.initialized:
@@ -186,12 +192,17 @@ class Tokenizer:
             default_logger.debug("Loading model cost %.3f seconds.", time.time() - t1)
             default_logger.debug("Prefix dict has been built succesfully.")
 
-    def check_initialized(self):
+    def check_initialized(self) -> None:
         if not self.initialized:
             self.initialize()
 
-    def calc(self, sentence, DAG, route):
-        N = len(sentence)
+    def calc(
+        self,
+        sentence: str,
+        DAG: dict[int, list[int]],
+        route: MutableMapping[int, tuple[float, int]],
+    ) -> None:
+        N: int = len(sentence)
         route[N] = (0, 0)
         logtotal = log(self.total)
         for idx in range(N - 1, -1, -1):
@@ -205,10 +216,10 @@ class Tokenizer:
                 for x in DAG[idx]
             )
 
-    def get_DAG(self, sentence):
+    def get_DAG(self, sentence: str) -> dict[int, list[int]]:
         self.check_initialized()
-        DAG = {}
-        N = len(sentence)
+        DAG: dict[int, list[int]] = {}
+        N: int = len(sentence)
         for k in range(N):
             tmplist = []
             i = k
@@ -223,7 +234,7 @@ class Tokenizer:
             DAG[k] = tmplist
         return DAG
 
-    def __cut_all(self, sentence):
+    def __cut_all(self, sentence: str) -> Iterator[str]:
         dag = self.get_DAG(sentence)
         old_j = -1
         for k, L in dag.items():
@@ -236,7 +247,7 @@ class Tokenizer:
                         yield sentence[k : j + 1]
                         old_j = j
 
-    def __cut_DAG_NO_HMM(self, sentence):
+    def __cut_DAG_NO_HMM(self, sentence: str) -> Iterator[str]:
         self.check_initialized()
         route = []
         jieba_next_functions._get_DAG_and_calc(
@@ -261,7 +272,7 @@ class Tokenizer:
             yield buf
             buf = ""
 
-    def __cut_DAG(self, sentence):
+    def __cut_DAG(self, sentence: str) -> Iterator[str]:
         self.check_initialized()
         route = []
         jieba_next_functions._get_DAG_and_calc(
@@ -303,7 +314,9 @@ class Tokenizer:
                 for elem in buf:
                     yield elem
 
-    def cut(self, sentence, cut_all=False, HMM=True):
+    def cut(
+        self, sentence: str, cut_all: bool = False, HMM: bool = True
+    ) -> Iterator[str]:
         """
         The main function that segments an entire sentence that contains
         Chinese characters into seperated words.
@@ -341,7 +354,7 @@ class Tokenizer:
                     else:
                         yield x
 
-    def cut_for_search(self, sentence, HMM=True):
+    def cut_for_search(self, sentence: str, HMM: bool = True) -> Iterator[str]:
         """
         Finer segmentation for search engines.
         """
@@ -359,32 +372,32 @@ class Tokenizer:
                         yield gram3
             yield w
 
-    def lcut(self, *args, **kwargs):
+    def lcut(self, *args, **kwargs) -> list[str]:
         return list(self.cut(*args, **kwargs))
 
-    def lcut_for_search(self, *args, **kwargs):
+    def lcut_for_search(self, *args, **kwargs) -> list[str]:
         return list(self.cut_for_search(*args, **kwargs))
 
     _lcut = lcut
     _lcut_for_search = lcut_for_search
 
-    def _lcut_no_hmm(self, sentence):
+    def _lcut_no_hmm(self, sentence: str) -> list[str]:
         return self.lcut(sentence, False, False)
 
-    def _lcut_all(self, sentence):
+    def _lcut_all(self, sentence: str) -> list[str]:
         return self.lcut(sentence, True)
 
-    def _lcut_for_search_no_hmm(self, sentence):
+    def _lcut_for_search_no_hmm(self, sentence: str) -> list[str]:
         return self.lcut_for_search(sentence, False)
 
-    def get_dict_file(self):
+    def get_dict_file(self) -> TextIO:
         if self.dictionary == DEFAULT_DICT:
             dict_path = _pkg_files(__package__).joinpath(DEFAULT_DICT_NAME)
             return Path(dict_path).open(encoding="utf-8")
         else:
             return Path(self.dictionary).open(encoding="utf-8")
 
-    def load_userdict(self, f):
+    def load_userdict(self, f: str | Path | TextIO) -> None:
         """
         Load personalized dict to improve detect rate.
 
@@ -415,7 +428,9 @@ class Tokenizer:
                 tag = tag.strip()
             self.add_word(word, freq, tag)
 
-    def add_word(self, word, freq=None, tag=None):
+    def add_word(
+        self, word: str, freq: int | None = None, tag: str | None = None
+    ) -> None:
         """
         Add a word to dictionary.
 
@@ -435,13 +450,13 @@ class Tokenizer:
         if freq == 0:
             finalseg.add_force_split(word)
 
-    def del_word(self, word):
+    def del_word(self, word: str) -> None:
         """
         Convenient function for deleting a word.
         """
         self.add_word(word, 0)
 
-    def suggest_freq(self, segment, tune=False):
+    def suggest_freq(self, segment: str | Sequence[str], tune: bool = False) -> int:
         """
         Suggest word frequency to force the characters in a word to be
         joined or splitted.
@@ -472,7 +487,9 @@ class Tokenizer:
             add_word(word, freq)
         return freq
 
-    def tokenize(self, unicode_sentence, mode="default", HMM=True):
+    def tokenize(
+        self, unicode_sentence: str, mode: str = "default", HMM: bool = True
+    ) -> Iterator[tuple[str, int, int]]:
         """
         Tokenize a sentence and yields tuples of (word, start, end)
 
@@ -503,7 +520,7 @@ class Tokenizer:
                 yield (w, start, start + width)
                 start += width
 
-    def set_dictionary(self, dictionary_path):
+    def set_dictionary(self, dictionary_path: str | Path) -> None:
         with self.lock:
             abs_path = Path(dictionary_path).resolve()
             if not Path(abs_path).is_file():
@@ -518,7 +535,7 @@ dt = Tokenizer()
 
 
 # global functions
-def get_freq(key, default=None):
+def get_freq(key: str, default: int | None = None) -> int | None:
     """Get word frequency from the in-memory dictionary.
 
     Preferred new name. Returns `default` when key not found.
@@ -526,7 +543,7 @@ def get_freq(key, default=None):
     return dt.FREQ.get(key, default)
 
 
-def get_FREQ(k, d=None):
+def get_FREQ(k: str, d: int | None = None) -> int | None:
     """Deprecated alias of get_freq."""
     warnings.warn(
         "get_FREQ is deprecated, use get_freq instead",

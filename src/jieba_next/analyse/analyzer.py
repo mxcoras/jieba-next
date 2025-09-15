@@ -1,16 +1,26 @@
+from __future__ import annotations
+
 import re
 
-from whoosh.analysis import (
-    LowercaseFilter,
-    RegexAnalyzer,
-    StemFilter,
-    StopFilter,
-    Token,
-    Tokenizer,
-)
-from whoosh.lang.porter import stem
-
 import jieba_next
+
+try:
+    from whoosh.analysis import (
+        LowercaseFilter,
+        RegexAnalyzer,
+        StemFilter,
+        StopFilter,
+        Token,
+        Tokenizer,
+    )
+    from whoosh.lang.porter import stem
+except Exception:  # whoosh missing
+    Token = object
+    stem = lambda x: x  # noqa: E731
+
+    class Tokenizer:
+        pass
+
 
 STOP_WORDS = frozenset((
     "a",

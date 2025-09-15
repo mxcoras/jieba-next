@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from collections import defaultdict
 from operator import itemgetter
 
@@ -7,19 +9,19 @@ from .tfidf import KeywordExtractor
 
 
 class UndirectWeightedGraph:
-    d = 0.85
+    d: float = 0.85
 
     def __init__(self):
-        self.graph = defaultdict(list)
+        self.graph: dict[object, list[tuple[object, object, int]]] = defaultdict(list)
 
-    def addEdge(self, start, end, weight):
+    def addEdge(self, start: object, end: object, weight: int) -> None:
         # use a tuple (start, end, weight) instead of a Edge object
         self.graph[start].append((start, end, weight))
         self.graph[end].append((end, start, weight))
 
-    def rank(self):
-        ws = defaultdict(float)
-        outSum = defaultdict(float)
+    def rank(self) -> dict[object, float]:
+        ws: dict[object, float] = defaultdict(float)
+        outSum: dict[object, float] = defaultdict(float)
 
         wsdef = 1.0 / (len(self.graph) or 1.0)
         for n, out in self.graph.items():
@@ -30,7 +32,7 @@ class UndirectWeightedGraph:
         sorted_keys = sorted(self.graph.keys())
         for _ in range(10):  # 10 iters
             for n in sorted_keys:
-                s = 0
+                s = 0.0
                 for e in self.graph[n]:
                     s += e[2] / outSum[e[1]] * ws[e[1]]
                 ws[n] = (1 - self.d) + self.d * s
@@ -51,13 +53,19 @@ class UndirectWeightedGraph:
 
 
 class TextRank(KeywordExtractor):
+    tokenizer: jieba_next.posseg.POSTokenizer
+    postokenizer: jieba_next.posseg.POSTokenizer
+    stop_words: set[str]
+    pos_filt: frozenset[str]
+    span: int
+
     def __init__(self):
         self.tokenizer = self.postokenizer = jieba_next.posseg.dt
         self.stop_words = self.STOP_WORDS.copy()
         self.pos_filt = frozenset(("ns", "n", "vn", "v"))
         self.span = 5
 
-    def pairfilter(self, wp):
+    def pairfilter(self, wp) -> bool:  # Pair
         return (
             wp.flag in self.pos_filt
             and len(wp.word.strip()) >= 2
@@ -66,12 +74,12 @@ class TextRank(KeywordExtractor):
 
     def textrank(
         self,
-        sentence,
-        topK=20,
-        withWeight=False,
-        allowPOS=("ns", "n", "vn", "v"),
-        withFlag=False,
-    ):
+        sentence: str,
+        topK: int | None = 20,
+        withWeight: bool = False,
+        allowPOS: tuple[str, ...] = ("ns", "n", "vn", "v"),
+        withFlag: bool = False,
+    ) -> list:
         """
         Extract keywords from sentence using TextRank algorithm.
         Parameter:
@@ -85,7 +93,7 @@ class TextRank(KeywordExtractor):
         """
         self.pos_filt = frozenset(allowPOS)
         g = UndirectWeightedGraph()
-        cm = defaultdict(int)
+        cm: dict[tuple[object, object], int] = defaultdict(int)
         words = tuple(self.tokenizer.cut(sentence))
         for i, wp in enumerate(words):
             if self.pairfilter(wp):
@@ -103,7 +111,7 @@ class TextRank(KeywordExtractor):
             g.addEdge(terms[0], terms[1], w)
         nodes_rank = g.rank()
         if withWeight:
-            tags = sorted(nodes_rank.items(), key=itemgetter(1), reverse=True)
+            tags: list = sorted(nodes_rank.items(), key=itemgetter(1), reverse=True)
         else:
             tags = sorted(nodes_rank, key=nodes_rank.__getitem__, reverse=True)
 
