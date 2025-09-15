@@ -43,7 +43,9 @@ jobs:
           # On macOS, cibuildwheel auto-detects: x86_64 on macos-13, arm64 on macos-14
           CIBW_SKIP: cp36-* cp37-*
           CIBW_BUILD: cp38-* cp39-* cp310-* cp311-* cp312-* cp313-*
+          # Use POSIX quoting on Linux/macOS, and Windows-specific quoting on Windows
           CIBW_TEST_COMMAND: "python -c 'import jieba_next; print(jieba_next.__version__)'"
+          CIBW_TEST_COMMAND_WINDOWS: 'python -c "import jieba_next; print(jieba_next.__version__)"'
         run: |
           python -m cibuildwheel --output-dir wheelhouse
 
