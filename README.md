@@ -23,7 +23,7 @@
 
 - 已完成基础功能测试，可以正确执行分词任务。
 - 与原 `jieba_fast` 仓库的分词结果具有一致性。
-- 性能方面略低于原 `jieba_fast` 仓库，后续将持续进行优化。
+- 性能方面略低于原 `jieba_fast` 仓库，但仍远强于原版 `jieba`，后续将持续进行优化。
 - 测试覆盖尚不完整，欢迎贡献测试用例。
 
 ## 安装
@@ -74,5 +74,5 @@ print('-'.join(jieba.lcut(text, HMM=False)))
 
 ## 鸣谢
 
-"结巴"中文分词原作者: SunJunyi
+"结巴"中文分词原作者: SunJunyi  
 jieba_fast 仓库作者: deepcs233
