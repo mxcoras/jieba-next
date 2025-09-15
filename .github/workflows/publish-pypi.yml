@@ -4,18 +4,27 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  build-wheels:
-    name: Build wheels (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+  build-wheels-linux:
+    name: Build Linux wheels (${{ matrix.target }})
+    runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, windows-2022, macos-13, macos-14]
+        include:
+          - target: manylinux_x86_64
+            arch: x86_64
+          - target: manylinux_aarch64
+            arch: aarch64
+          - target: musllinux_x86_64
+            arch: x86_64
+          - target: musllinux_aarch64
+            arch: aarch64
     steps:
       - uses: actions/checkout@v4
 
@@ -25,7 +34,7 @@ jobs:
           python-version: '3.12'
 
       - name: Set up QEMU (for aarch64 on Linux)
-        if: runner.os == 'Linux'
+        if: contains(matrix.target, 'aarch64')
         uses: docker/setup-qemu-action@v3
         with:
           platforms: arm64
@@ -38,12 +47,48 @@ jobs:
       - name: Build wheels
         env:
           CIBW_BUILD_VERBOSITY: 1
-          # On Linux, also build aarch64 via QEMU emulation
-          CIBW_ARCHS_LINUX: x86_64 aarch64
+          CIBW_ARCHS_LINUX: ${{ matrix.arch }}
+          CIBW_SKIP: cp36-* cp37-*
+          # Build specific Linux target variants in parallel by matrix
+          CIBW_BUILD: "cp39-${{ matrix.target }} cp310-${{ matrix.target }} cp311-${{ matrix.target }} cp312-${{ matrix.target }} cp313-${{ matrix.target }}"
+          # Use POSIX quoting for Linux
+          CIBW_TEST_COMMAND: "python -c 'import jieba_next; print(jieba_next.__version__)'"
+        run: |
+          python -m cibuildwheel --output-dir wheelhouse
+
+      - name: Upload wheels artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-linux-${{ matrix.target }}
+          path: wheelhouse/*.whl
+
+  build-wheels-nonlinux:
+    name: Build wheels (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, macos-13, macos-14]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install cibuildwheel==2.21.3
+
+      - name: Build wheels
+        env:
+          CIBW_BUILD_VERBOSITY: 1
           # On macOS, cibuildwheel auto-detects: x86_64 on macos-13, arm64 on macos-14
           CIBW_SKIP: cp36-* cp37-*
           CIBW_BUILD: cp39-* cp310-* cp311-* cp312-* cp313-*
-          # Use POSIX quoting on Linux/macOS, and Windows-specific quoting on Windows
+          # Use POSIX quoting on macOS, and Windows-specific quoting on Windows
           CIBW_TEST_COMMAND: "python -c 'import jieba_next; print(jieba_next.__version__)'"
           CIBW_TEST_COMMAND_WINDOWS: 'python -c "import jieba_next; print(jieba_next.__version__)"'
         run: |
@@ -80,7 +125,7 @@ jobs:
 
   publish:
     name: Publish to PyPI
-    needs: [build-wheels, build-sdist]
+    needs: [build-wheels-linux, build-wheels-nonlinux, build-sdist]
     runs-on: ubuntu-22.04
     permissions:
       contents: read
@@ -109,18 +154,28 @@ jobs:
           mv dist/**/*.tar.gz upload/ || true
           ls -al upload
 
-      - name: Verify tag matches version in pyproject
+      - name: Verify tag matches scm version
         shell: bash
         run: |
-          TAG="${GITHUB_REF##*/}"
-          VERSION=$(python -c "import tomllib,sys;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
-          if [[ "$TAG" != v$VERSION ]]; then
-            echo "Tag $TAG does not match version $VERSION in pyproject.toml" >&2
+          # Only verify on tag refs
+          if [[ "${GITHUB_REF}" != refs/tags/* ]]; then
+            echo "Not a tag ref (${GITHUB_REF}), skipping version verification."
+            exit 0
+          fi
+          pip install setuptools-scm
+          TAG_RAW="${GITHUB_REF##*/}"         # e.g. v1.0.0-alpha.3
+          # Normalize tag to PEP 440 prerelease: -alpha.N/-beta.N/-rc.N -> aN/bN/rcN; also strip leading v
+          TAG_NORMALIZED=$(echo "$TAG_RAW" | sed -E 's/^[vV]//; s/-alpha[-.]?([0-9]+)$/a\1/; s/-beta[-.]?([0-9]+)$/b\1/; s/-rc[-.]?([0-9]+)$/rc\1/')
+          VERSION=$(python -m setuptools_scm)
+          if [[ "$TAG_NORMALIZED" != "$VERSION" ]]; then
+            echo "Tag $TAG_RAW (normalized: $TAG_NORMALIZED) does not match scm version $VERSION" >&2
             exit 1
           fi
+          echo "Tag and scm version match: $TAG_RAW ~ $VERSION"
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+        if: startsWith(github.ref, 'refs/tags/')
         with:
           packages-dir: upload
           password: ${{ secrets.PYPI_API_TOKEN }}
