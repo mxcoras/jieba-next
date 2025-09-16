@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel", "cython", "setuptools-scm>=8"]
+requires = ["setuptools>=61.0", "wheel", "setuptools-rust>=0.12.1", "setuptools-scm>=8"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,7 +8,7 @@ dynamic = ["version"]
 authors = [
   { name="mxcoras", email="mxcoras@outlook.com" },
 ]
-description = "Modernized fork of jieba_fast, with python 3.9+ support and Cython speedups."
+description = "Modernized fork of jieba_fast, with python 3.9+ support and Rust speedups."
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.9"
@@ -26,6 +26,7 @@ classifiers = [
     'Programming Language :: Python :: 3.11',
     'Programming Language :: Python :: 3.12',
     'Programming Language :: Python :: 3.13',
+    'Programming Language :: Rust',
     'Topic :: Text Processing',
     'Topic :: Text Processing :: Indexing',
     'Topic :: Text Processing :: Linguistic',
@@ -61,4 +62,6 @@ packages = {find = {where = ["src"]}}
 
 [tool.setuptools_scm]
 fallback_version = "0.0.0"
+write_to = "src/jieba_next/_version.py"
+version_scheme = "only-version"
 local_scheme = "no-local-version"

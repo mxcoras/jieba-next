@@ -1,6 +1,6 @@
 import re
 
-from ..jieba_next_functions import _viterbi as viterbi_hmm
+from ..jieba_next_rust import _viterbi as viterbi_hmm
 from .prob_emit import P as emit_P
 from .prob_start import P as start_P
 from .prob_trans import P as trans_P

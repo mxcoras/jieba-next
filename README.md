@@ -6,14 +6,14 @@
 [![PyPI - Downloads](https://img.shields.io/pypi/dd/jieba-next.svg)](https://pypistats.org/packages/jieba-next)
 [![License](https://img.shields.io/pypi/l/jieba-next.svg)](https://opensource.org/licenses/MIT)
 
-`jieba-next` 是 [jieba_fast](https://github.com/deepcs233/jieba_fast) 的一个现代化分支，旨在提供对 Python 3.9+ 的支持，并利用 Cython 进行了代码优化和加速。
+`jieba-next` 是 [jieba_fast](https://github.com/deepcs233/jieba_fast) 的一个现代化分支，旨在提供对 Python 3.9+ 的支持，并利用 Rust 进行了代码优化和加速。
 
-`jieba_fast` 本身是经典中文分词库 `jieba` 的一个 CPython 加速版本。本项目在 `jieba_fast` 的基础上，更新了构建系统，并用 Cython 重新实现了部分核心算法，解决了[内存泄漏问题](https://github.com/deepcs233/jieba_fast/issues/26)，并提升了可维护性。
+`jieba_fast` 本身是经典中文分词库 `jieba` 的一个 CPython 加速版本。本项目在 `jieba_fast` 的基础上，更新了构建系统，并用 Rust (via PyO3) 重新实现了部分核心算法，进一步提升了性能，解决了[内存泄漏问题](https://github.com/deepcs233/jieba_fast/issues/26)，并提升了可维护性。
 
 ## 项目特点
 
 - **现代化**：支持 Python 3.9 及更高版本，不再支持 Python 2。
-- **性能**：利用 Cython 重新实现了生成 DAG（有向无环图）及计算最优路径的算法，以提升分词速度。
+- **性能**：利用 Rust (via PyO3) 重新实现了生成 DAG（有向无环图）、计算最优路径以及 Viterbi 算法，以提升分词速度。
 - **兼容性**：力求与原版 `jieba` 和 `jieba_fast` 的分词结果保持一致。
 - **易于安装**：使用现代化的构建工具，提供多平台的预编译二进制包（wheels），简化安装过程。
 - **易于使用**：可以作为 `jieba` 的直接替代品，只需 `import jieba_next as jieba`。
@@ -24,7 +24,7 @@
 
 - 已完成基础功能测试，可以正确执行分词任务。
 - 与原 `jieba_fast` 仓库的分词结果具有一致性。
-- 性能方面略低于原 `jieba_fast` 仓库，但仍远强于原版 `jieba`，后续将持续进行优化。
+- 性能进一步领先于原 `jieba_fast` 仓库，后续将持续进行优化。
 - 测试覆盖尚不完整，欢迎贡献测试用例。
 
 ## 安装
@@ -35,7 +35,7 @@
 pip install jieba-next
 ```
 
-或者从源码安装：
+或者从源码安装（需要 Rust 工具链）：
 
 ```bash
 git clone https://github.com/mxcoras/jieba-next.git

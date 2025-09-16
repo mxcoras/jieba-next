@@ -18,7 +18,7 @@ from math import log
 from pathlib import Path
 from typing import TYPE_CHECKING, TextIO
 
-from . import finalseg, jieba_next_functions
+from . import finalseg, jieba_next_rust
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, MutableMapping, Sequence
@@ -193,6 +193,7 @@ class Tokenizer:
         self.initialized = False
         self.tmp_dir = None
         self.cache_file = None
+        self._rust_prefix = None  # fast trie for DAG+DP
 
     def __repr__(self):
         return f"<Tokenizer dictionary={self.dictionary!r}>"
@@ -284,6 +285,13 @@ class Tokenizer:
                     pass
 
             self.initialized = True
+            # Build fast Rust prefix dict once dictionary is ready
+            try:
+                self._rust_prefix = jieba_next_rust.PrefixDict(
+                    self.FREQ, float(self.total)
+                )
+            except Exception:
+                self._rust_prefix = None
             default_logger.info(
                 "Loaded prefix dict in %.3fs (entries=%d)",
                 time.time() - t1,
@@ -348,10 +356,15 @@ class Tokenizer:
 
     def __cut_DAG_NO_HMM(self, sentence: str) -> Iterator[str]:
         self.check_initialized()
-        route = []
-        jieba_next_functions._get_DAG_and_calc(
-            self.FREQ, sentence, route, float(self.total)
-        )
+        if self._rust_prefix is None:
+            self._ensure_rust_prefix()
+        if self._rust_prefix is not None:
+            route = list(self._rust_prefix.get_dag_and_calc(sentence))
+        else:
+            route = []
+            jieba_next_rust._get_DAG_and_calc(
+                self.FREQ, sentence, route, float(self.total)
+            )
         x = 0
         N = len(sentence)
         buf = ""
@@ -373,10 +386,16 @@ class Tokenizer:
 
     def __cut_DAG(self, sentence: str) -> Iterator[str]:
         self.check_initialized()
-        route = []
-        jieba_next_functions._get_DAG_and_calc(
-            self.FREQ, sentence, route, float(self.total)
-        )
+        if self._rust_prefix is None:
+            self._ensure_rust_prefix()
+        if self._rust_prefix is not None:
+            route = list(self._rust_prefix.get_dag_and_calc(sentence))
+        else:
+            route = []
+            jieba_next_rust._get_DAG_and_calc(
+                self.FREQ, sentence, route, float(self.total)
+            )
+
         x = 0
         buf = ""
         N = len(sentence)
@@ -544,12 +563,15 @@ class Tokenizer:
                 self.FREQ[wfrag] = 0
         if freq == 0:
             finalseg.add_force_split(word)
+        # PrefixDict becomes stale; rebuild lazily next initialize
+        self._rust_prefix = None
 
     def del_word(self, word: str) -> None:
         """
         Convenient function for deleting a word.
         """
         self.add_word(word, 0)
+        self._rust_prefix = None
 
     def suggest_freq(self, segment: str | Sequence[str], tune: bool = False) -> int:
         """
@@ -624,6 +646,17 @@ class Tokenizer:
                 )
             self.dictionary = abs_path
             self.initialized = False
+            self._rust_prefix = None
+
+    def _ensure_rust_prefix(self) -> None:
+        """Rebuild Rust PrefixDict from current FREQ/total if missing."""
+        if self.initialized and self._rust_prefix is None:
+            try:
+                self._rust_prefix = jieba_next_rust.PrefixDict(
+                    self.FREQ, float(self.total)
+                )
+            except Exception:
+                self._rust_prefix = None
 
 
 # default Tokenizer instance

@@ -224,5 +224,9 @@ __marimo__/
 # Temporarily ignore test files
 test/
 
-tmp
+tmp/
 .vscode/
+
+# Rust
+debug
+target
