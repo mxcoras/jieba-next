@@ -14,7 +14,7 @@ DEFAULT_IDF = Path(__file__).parent / "idf.txt"
 
 
 class KeywordExtractor:
-    STOP_WORDS = set(
+    STOP_WORDS = {
         "the",
         "of",
         "is",
@@ -46,8 +46,7 @@ class KeywordExtractor:
         "one",
         "has",
         "or",
-        "that",
-    )
+    }
 
     def set_stop_words(self, stop_words_path: str | Path) -> None:
         abs_path = Path(stop_words_path).resolve()
