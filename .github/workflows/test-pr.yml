@@ -40,7 +40,7 @@ jobs:
           CIBW_BUILD: cp313-manylinux_x86_64
           CIBW_BEFORE_ALL_LINUX: "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && source ~/.cargo/env"
           CIBW_ENVIRONMENT: "PATH=$HOME/.cargo/bin:$PATH"
-          CIBW_TEST_COMMAND: "python -c 'import jieba_next; print(jieba_next.__version__)'"
+          CIBW_TEST_COMMAND: "python -c 'import jieba_next;  from jieba_next import analyse;print(jieba_next.__version__)'"
         run: |
           python -m cibuildwheel --output-dir wheelhouse
 
@@ -79,7 +79,7 @@ jobs:
           CIBW_BUILD: cp313-*
           CIBW_BEFORE_ALL_WINDOWS: "curl --proto =https --tlsv1.2 -sSf https://win.rustup.rs/x86_64 -o rustup-init.exe && rustup-init.exe -y"
           CIBW_BEFORE_BUILD_WINDOWS: "pip install setuptools-rust"
-          CIBW_TEST_COMMAND_WINDOWS: 'python -c "import jieba_next; print(jieba_next.__version__)"'
+          CIBW_TEST_COMMAND_WINDOWS: 'python -c "import jieba_next;  from jieba_next import analyse;print(jieba_next.__version__)"'
         run: |
           python -m cibuildwheel --output-dir wheelhouse
 
@@ -155,7 +155,7 @@ jobs:
       - name: Verify sdist
         run: |
           pip install dist/*.tar.gz
-          python -c "import jieba_next; print(f'Version: {jieba_next.__version__}')"
+          python -c "import jieba_next; from jieba_next import analyse; print(f'Version: {jieba_next.__version__}')"
 
       - name: Upload sdist artifact
         uses: actions/upload-artifact@v4

@@ -60,7 +60,7 @@ jobs:
           CIBW_BEFORE_ALL_LINUX: "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && source ~/.cargo/env"
           CIBW_ENVIRONMENT: "PATH=$HOME/.cargo/bin:$PATH"
           # Use POSIX quoting for Linux
-          CIBW_TEST_COMMAND: "python -c 'import jieba_next; print(jieba_next.__version__)'"
+          CIBW_TEST_COMMAND: "python -c 'import jieba_next;  from jieba_next import analyse;print(jieba_next.__version__)'"
         run: |
           python -m cibuildwheel --output-dir wheelhouse
 
@@ -111,8 +111,8 @@ jobs:
           CIBW_BEFORE_BUILD_MACOS: "source ~/.cargo/env && pip install setuptools-rust"
           CIBW_BEFORE_BUILD_WINDOWS: "pip install setuptools-rust"
           # Use POSIX quoting on macOS, and Windows-specific quoting on Windows
-          CIBW_TEST_COMMAND: "python -c 'import jieba_next; from jieba_next import analyze; print(jieba_next.__version__)'"
-          CIBW_TEST_COMMAND_WINDOWS: 'python -c "import jieba_next; print(jieba_next.__version__)"'
+          CIBW_TEST_COMMAND: "python -c 'import jieba_next; from jieba_next import analyse; print(jieba_next.__version__)'"
+          CIBW_TEST_COMMAND_WINDOWS: 'python -c "import jieba_next; from jieba_next import analyse; print(jieba_next.__version__)"'
         run: |
           python -m cibuildwheel --output-dir wheelhouse
 
