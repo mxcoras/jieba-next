@@ -53,7 +53,7 @@ jobs:
         env:
           CIBW_BUILD_VERBOSITY: 1
           CIBW_ARCHS_LINUX: ${{ matrix.arch }}
-          CIBW_SKIP: cp36-* cp37-* cp38-*
+          CIBW_SKIP: cp38-*
           # Build specific Linux target variants in parallel by matrix
           CIBW_BUILD: "cp39-${{ matrix.target }} cp310-${{ matrix.target }} cp311-${{ matrix.target }} cp312-${{ matrix.target }} cp313-${{ matrix.target }} cp314-${{ matrix.target }}"
           # Install Rust in the build environment
@@ -98,14 +98,16 @@ jobs:
       - name: Build wheels
         env:
           CIBW_BUILD_VERBOSITY: 1
-          CIBW_SKIP: cp36-* cp37-* cp38-*
+          CIBW_SKIP: cp38-*
           CIBW_BUILD: cp39-* cp310-* cp311-* cp312-* cp313-* cp314-*
           # Set macOS deployment target
           MACOSX_DEPLOYMENT_TARGET: "10.12"
           # build both archs on macOS
           CIBW_ARCHS_MACOS: "x86_64 arm64"
           # Install Rust for each platform
-          CIBW_BEFORE_ALL_MACOS: "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y"
+          CIBW_BEFORE_ALL_MACOS: |
+            rustup target add x86_64-apple-darwin
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
           CIBW_BEFORE_ALL_WINDOWS: "curl --proto =https --tlsv1.2 -sSf https://win.rustup.rs/x86_64 -o rustup-init.exe && rustup-init.exe -y"
           # Ensure Rust is available for building
           CIBW_BEFORE_BUILD: "pip install setuptools-rust"
