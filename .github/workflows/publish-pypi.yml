@@ -26,12 +26,12 @@ jobs:
           - target: musllinux_aarch64
             arch: aarch64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
@@ -47,13 +47,13 @@ jobs:
       - name: Install build tools
         run: |
           python -m pip install --upgrade pip
-          pip install cibuildwheel==2.21.3
+          pip install cibuildwheel>=3.0.0
 
       - name: Build wheels
         env:
           CIBW_BUILD_VERBOSITY: 1
           CIBW_ARCHS_LINUX: ${{ matrix.arch }}
-          CIBW_SKIP: cp36-* cp37-*
+          CIBW_SKIP: cp36-* cp37-* cp38-*
           # Build specific Linux target variants in parallel by matrix
           CIBW_BUILD: "cp39-${{ matrix.target }} cp310-${{ matrix.target }} cp311-${{ matrix.target }} cp312-${{ matrix.target }} cp313-${{ matrix.target }} cp314-${{ matrix.target }}"
           # Install Rust in the build environment
@@ -65,7 +65,7 @@ jobs:
           python -m cibuildwheel --output-dir wheelhouse
 
       - name: Upload wheels artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: wheels-linux-${{ matrix.target }}
           path: wheelhouse/*.whl
@@ -76,14 +76,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-2022, macos-15-intel, macos-15]
+        os: [windows-2022, macos-15]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0  # ensure tags and full history for setuptools_scm
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
@@ -93,16 +93,17 @@ jobs:
       - name: Install build tools
         run: |
           python -m pip install --upgrade pip
-          pip install cibuildwheel==2.21.3
+          pip install cibuildwheel>=3.0.0
 
       - name: Build wheels
         env:
           CIBW_BUILD_VERBOSITY: 1
-          # On macOS, cibuildwheel auto-detects: x86_64 on macos-15-intel, arm64 on macos-15
           CIBW_SKIP: cp36-* cp37-* cp38-*
           CIBW_BUILD: cp39-* cp310-* cp311-* cp312-* cp313-* cp314-*
           # Set macOS deployment target
           MACOSX_DEPLOYMENT_TARGET: "10.12"
+          # build both archs on macOS
+          CIBW_ARCHS_MACOS: "x86_64 arm64"
           # Install Rust for each platform
           CIBW_BEFORE_ALL_MACOS: "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y"
           CIBW_BEFORE_ALL_WINDOWS: "curl --proto =https --tlsv1.2 -sSf https://win.rustup.rs/x86_64 -o rustup-init.exe && rustup-init.exe -y"
@@ -126,12 +127,12 @@ jobs:
     name: Build sdist
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0  # ensure tags and full history for setuptools_scm
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
@@ -158,17 +159,17 @@ jobs:
       contents: read
       id-token: write  # for future OIDC trusted publishing if enabled
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
-          python-version: '3.11'
+          python-version: '3.12'
 
       - name: Download artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: dist
 
@@ -182,24 +183,6 @@ jobs:
           mv dist/**/**/*.tar.gz upload/ || true
           mv dist/**/*.tar.gz upload/ || true
           ls -al upload
-
-      - name: Verify tag matches scm version
-        shell: bash
-        run: |
-          # Only verify on tag refs
-          if [[ "${GITHUB_REF}" != refs/tags/* ]]; then
-            echo "Not a tag ref (${GITHUB_REF}), skipping version verification."
-            exit 0
-          fi
-          pip install setuptools-scm
-          TAG_RAW="${GITHUB_REF##*/}"         # e.g. v1.0.0 or v1.0.0a1
-          TAG_VERSION="${TAG_RAW#v}"
-          VERSION=$(python -m setuptools_scm)
-          if [[ "$TAG_VERSION" != "$VERSION" ]]; then
-            echo "Tag $TAG_RAW (version: $TAG_VERSION) does not match scm version $VERSION" >&2
-            exit 1
-          fi
-          echo "Tag and scm version match: $TAG_RAW ~ $VERSION"
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1

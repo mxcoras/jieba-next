@@ -29,13 +29,19 @@
 
 ## 安装
 
-您可以通过 pip 从 PyPI 安装：
+对于大多数常见平台，您可以直接通过 pip 从 PyPI 安装：
 
 ```bash
 pip install jieba-next
 ```
 
-或者从源码安装（需要 Rust 工具链）：
+如果安装过程中遇到问题，可以尝试安装 Rust 工具链：
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+您也可以从源码安装（需要 Rust 工具链）：
 
 ```bash
 git clone https://github.com/mxcoras/jieba-next.git
