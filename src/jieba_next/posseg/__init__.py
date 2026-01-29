@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import warnings
 from typing import TYPE_CHECKING
 
 import jieba_next
@@ -286,9 +287,25 @@ dt: POSTokenizer = POSTokenizer(jieba_next.dt)
 # global functions
 cut = dt.cut
 lcut = dt.lcut
-_lcut = dt._lcut
-_lcut_no_hmm = dt._lcut_no_hmm
 initialize = dt.initialize
+
+
+def _lcut(*args, **kwargs):
+    warnings.warn(
+        "posseg._lcut is deprecated, use lcut instead",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return dt._lcut(*args, **kwargs)
+
+
+def _lcut_no_hmm(*args, **kwargs):
+    warnings.warn(
+        "posseg._lcut_no_hmm is deprecated, use lcut(HMM=False) instead",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return dt._lcut_no_hmm(*args, **kwargs)
 
 
 # Explicit public API for posseg

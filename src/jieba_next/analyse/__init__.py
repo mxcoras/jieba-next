@@ -1,10 +1,6 @@
+from .analyzer import ChineseAnalyzer
 from .textrank import TextRank
 from .tfidf import TFIDF
-
-try:
-    from .analyzer import ChineseAnalyzer
-except ImportError:
-    pass
 
 default_tfidf = TFIDF()
 default_textrank = TextRank()

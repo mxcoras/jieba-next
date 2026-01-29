@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 import logging
 import marshal
 import os
@@ -11,7 +12,6 @@ import threading
 import time
 import warnings
 from hashlib import md5
-from importlib import resources as _resources
 from importlib.metadata import version as _pkg_version
 from importlib.resources import files as _pkg_files
 from math import log
@@ -23,10 +23,19 @@ from . import finalseg, jieba_next_rust
 if TYPE_CHECKING:
     from collections.abc import Iterator, MutableMapping, Sequence
 
-if os.name == "nt":
-    from shutil import move as _replace_file
-else:
-    _replace_file = os.rename
+
+def _replace_file(src: str | Path, dest: str | Path) -> None:
+    """Replace dest with src, handling cross-device moves safely."""
+    src_path = Path(src)
+    dest_path = Path(dest)
+    try:
+        Path(src_path).replace(dest_path)
+    except OSError as exc:
+        if exc.errno == errno.EXDEV:
+            shutil.copy2(src_path, dest_path)
+            src_path.unlink()
+        else:
+            raise
 
 
 __license__ = "MIT"
@@ -496,16 +505,45 @@ class Tokenizer:
     def lcut_for_search(self, *args, **kwargs) -> list[str]:
         return list(self.cut_for_search(*args, **kwargs))
 
-    _lcut = lcut
-    _lcut_for_search = lcut_for_search
+    def _lcut(self, *args, **kwargs) -> list[str]:
+        warnings.warn(
+            "_lcut is deprecated, use lcut instead",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.lcut(*args, **kwargs)
+
+    def _lcut_for_search(self, *args, **kwargs) -> list[str]:
+        warnings.warn(
+            "_lcut_for_search is deprecated, use lcut_for_search instead",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.lcut_for_search(*args, **kwargs)
 
     def _lcut_no_hmm(self, sentence: str) -> list[str]:
+        warnings.warn(
+            "_lcut_no_hmm is deprecated, use lcut(HMM=False) instead",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return self.lcut(sentence, False, False)
 
     def _lcut_all(self, sentence: str) -> list[str]:
+        warnings.warn(
+            "_lcut_all is deprecated, use lcut(cut_all=True) instead",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return self.lcut(sentence, True)
 
     def _lcut_for_search_no_hmm(self, sentence: str) -> list[str]:
+        warnings.warn(
+            "_lcut_for_search_no_hmm is deprecated, "
+            "use lcut_for_search(HMM=False) instead",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return self.lcut_for_search(sentence, False)
 
     def get_dict_file(self) -> TextIO:
@@ -700,10 +738,82 @@ tokenize = dt.tokenize
 user_word_tag_tab = dt.user_word_tag_tab
 
 
-def _replace_file(src, dest):
-    # rename can't be used across different file systems
-    shutil.copy(src, dest)
-    Path(src).unlink()
+def _lcut(sentence: str) -> list[str]:
+    return dt.lcut(sentence)
+
+
+def _lcut_all(sentence: str) -> list[str]:
+    return dt.lcut(sentence, True)
+
+
+def _lcut_no_hmm(sentence: str) -> list[str]:
+    return dt.lcut(sentence, False, False)
+
+
+def _lcut_for_search(sentence: str) -> list[str]:
+    return dt.lcut_for_search(sentence)
+
+
+def _lcut_for_search_no_hmm(sentence: str) -> list[str]:
+    return dt.lcut_for_search(sentence, False)
+
+
+def _pcut(sentence: str, cut_all: bool = False, HMM: bool = True):
+    parts = sentence.splitlines(True)
+    if cut_all:
+        result = pool.map(_lcut_all, parts)
+    elif HMM:
+        result = pool.map(_lcut, parts)
+    else:
+        result = pool.map(_lcut_no_hmm, parts)
+    for r in result:
+        yield from r
+
+
+def _pcut_for_search(sentence: str, HMM: bool = True):
+    parts = sentence.splitlines(True)
+    if HMM:
+        result = pool.map(_lcut_for_search, parts)
+    else:
+        result = pool.map(_lcut_for_search_no_hmm, parts)
+    for r in result:
+        yield from r
+
+
+def enable_parallel(processnum: int | None = None) -> None:
+    """
+    Change the module's `cut` and `cut_for_search` functions to the
+    parallel version.
+
+    Note that this only works using dt, custom Tokenizer instances are not
+    supported.
+    """
+    global pool, cut, cut_for_search
+    from multiprocessing import cpu_count
+
+    if os.name == "nt":
+        raise NotImplementedError("jieba: parallel mode only supports posix system")
+    from multiprocessing import Pool
+
+    dt.check_initialized()
+    if processnum is None:
+        processnum = cpu_count()
+    if pool:
+        pool.close()
+        pool.join()
+    pool = Pool(processnum)
+    cut = _pcut
+    cut_for_search = _pcut_for_search
+
+
+def disable_parallel() -> None:
+    global pool, cut, cut_for_search
+    if pool:
+        pool.close()
+        pool.join()
+        pool = None
+    cut = dt.cut
+    cut_for_search = dt.cut_for_search
 
 
 # Explicit public API
@@ -734,6 +844,8 @@ __all__ = [
     "suggest_freq",
     "tokenize",
     "user_word_tag_tab",
+    "enable_parallel",
+    "disable_parallel",
     # Cache helpers
     "set_cache_dir",
     "get_cache_dir",
