@@ -2,7 +2,7 @@
 
 [![PyPI version](https://badge.fury.io/py/jieba-next.svg)](https://badge.fury.io/py/jieba-next)
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/jieba-next.svg)](https://pypi.org/project/jieba-next/)
-[![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/mxcoras/jieba-next/publish-pypi.yml?branch=main&style=flat-square)](https://github.com/mxcoras/jieba-next/actions)
+[![GitHub Actions Workflow Status](https://github.com/mxcoras/jieba-next/actions/workflows/publish-pypi.yml/badge.svg)](https://github.com/mxcoras/jieba-next/actions/workflows/publish-pypi.yml)
 [![PyPI - Downloads](https://img.shields.io/pypi/dd/jieba-next.svg)](https://pypistats.org/packages/jieba-next)
 [![License](https://img.shields.io/pypi/l/jieba-next.svg)](https://opensource.org/licenses/MIT)
 
