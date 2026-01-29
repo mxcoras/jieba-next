@@ -46,12 +46,12 @@ def test_deprecated_aliases_warn() -> None:
     ):
         jieba.setLogLevel(60)
 
-    with pytest.warns(
-        DeprecationWarning,
-        match="jieba_next.analyze is deprecated, use jieba_next.analyse instead",
-    ):
-        with warnings.catch_warnings():
-            warnings.simplefilter("always", DeprecationWarning)
+    with warnings.catch_warnings():
+        warnings.simplefilter("always", DeprecationWarning)
+        with pytest.warns(
+            DeprecationWarning,
+            match="jieba_next.analyze is deprecated, use jieba_next.analyse instead",
+        ):
             import jieba_next.analyze as _  # noqa: F401
 
 

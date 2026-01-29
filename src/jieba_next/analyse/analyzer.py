@@ -52,7 +52,7 @@ STOP_WORDS = frozenset((
 accepted_chars = re.compile(r"[\u4E00-\u9FD5]+")
 
 
-class Token:
+class Token:  # noqa: B903
     __slots__ = ("text", "original", "pos", "startchar", "endchar")
 
     def __init__(self, text: str, start: int, end: int) -> None:
