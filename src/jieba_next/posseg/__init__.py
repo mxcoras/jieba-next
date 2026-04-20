@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 import warnings
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TextIO
 
 import jieba_next
 
@@ -26,6 +26,25 @@ re_eng = re.compile(r"[a-zA-Z0-9]+")
 re_num = re.compile(r"[\.0-9]+")
 
 re_eng1 = re.compile(r"^[a-zA-Z0-9]$", re.UNICODE)
+
+
+# Attributes explicitly delegated to the underlying Tokenizer via __getattr__.
+# Narrowing this from "forward everything" makes the surface testable and
+# predictable for static analysis / mocking.
+_FORWARDED_TOKENIZER_ATTRS = frozenset({
+    "FREQ",
+    "add_word",
+    "calc",
+    "check_initialized",
+    "del_word",
+    "dictionary",
+    "get_DAG",
+    "load_userdict",
+    "set_dictionary",
+    "suggest_freq",
+    "total",
+    "user_word_tag_tab",
+})
 
 
 class Pair:
@@ -75,22 +94,41 @@ class POSTokenizer:
 
     def __init__(self, tokenizer: jieba_next.Tokenizer | None = None):
         self.tokenizer = tokenizer or jieba_next.Tokenizer()
-        self.load_word_tag(self.tokenizer.get_dict_file())
+        with self.tokenizer.get_dict_file() as stream:
+            self.load_word_tag(stream)
 
     def __repr__(self) -> str:
         return f"<POSTokenizer tokenizer={self.tokenizer!r}>"
 
     def __getattr__(self, name: str):
+        # POS tokenization only supports the "detail" flow; explicitly block
+        # these Tokenizer methods rather than silently producing ``str`` output
+        # instead of ``Pair`` (matches historical behaviour).
         if name in ("cut_for_search", "lcut_for_search", "tokenize"):
-            # may be possible?
-            raise NotImplementedError
-        return getattr(self.tokenizer, name)
+            raise NotImplementedError(
+                f"POSTokenizer does not support {name!r}; "
+                "use jieba_next.tokenize/cut_for_search via the base Tokenizer."
+            )
+        # Forward only an explicit allowlist to the underlying Tokenizer. This
+        # keeps the public surface discoverable while preserving compatibility
+        # with ``posseg.dt.add_word(...)`` style calls used by existing users.
+        if name in _FORWARDED_TOKENIZER_ATTRS:
+            return getattr(self.tokenizer, name)
+        raise AttributeError(
+            f"{type(self).__name__!r} object has no attribute {name!r}"
+        )
 
     def initialize(self, dictionary: str | Path | None = None) -> None:
         self.tokenizer.initialize(dictionary)
-        self.load_word_tag(self.tokenizer.get_dict_file())
+        with self.tokenizer.get_dict_file() as stream:
+            self.load_word_tag(stream)
 
-    def load_word_tag(self, f) -> None:  # TextIO but keep loose for compatibility
+    def load_word_tag(self, f: TextIO) -> None:
+        """Populate ``word_tag_tab`` from a POS dictionary stream.
+
+        Unlike the historical implementation this method no longer closes the
+        stream; callers own the file's lifetime.
+        """
         self.word_tag_tab = {}
         f_name = getattr(f, "name", "stream")
         for lineno, line in enumerate(f, 1):
@@ -104,14 +142,17 @@ class POSTokenizer:
                 raise ValueError(
                     f"invalid POS dictionary entry in {f_name} at Line {lineno}: {line}"
                 ) from e
-        f.close()
 
     def makesure_userdict_loaded(self) -> None:
         if self.tokenizer.user_word_tag_tab:
             self.word_tag_tab.update(self.tokenizer.user_word_tag_tab)
             self.tokenizer.user_word_tag_tab = {}
 
-    def __cut(self, sentence: str) -> Iterator[Pair]:
+    # ------------------------------------------------------------------
+    # Private cut helpers (single-underscore so tests can import them)
+    # ------------------------------------------------------------------
+
+    def _cut(self, sentence: str) -> Iterator[Pair]:
         prob, pos_list = viterbi(sentence, char_state_tab_P, start_P, trans_P, emit_P)
         begin, nexti = 0, 0
 
@@ -128,11 +169,11 @@ class POSTokenizer:
         if nexti < len(sentence):
             yield Pair(sentence[nexti:], pos_list[nexti][1])
 
-    def __cut_detail(self, sentence: str) -> Iterator[Pair]:
+    def _cut_detail(self, sentence: str) -> Iterator[Pair]:
         blocks = re_han_detail.split(sentence)
         for blk in blocks:
             if re_han_detail.match(blk):
-                yield from self.__cut(blk)
+                yield from self._cut(blk)
             else:
                 tmp = re_skip_detail.split(blk)
                 for x in tmp:
@@ -144,9 +185,9 @@ class POSTokenizer:
                         else:
                             yield Pair(x, "x")
 
-    def __cut_DAG_NO_HMM(self, sentence: str) -> Iterator[Pair]:
+    def _cut_dag_no_hmm(self, sentence: str) -> Iterator[Pair]:
         DAG = self.tokenizer.get_DAG(sentence)
-        route = {}
+        route: dict[int, tuple[float, int]] = {}
         self.tokenizer.calc(sentence, DAG, route)
         x = 0
         N = len(sentence)
@@ -165,11 +206,10 @@ class POSTokenizer:
                 x = y
         if buf:
             yield Pair(buf, "eng")
-            buf = ""
 
-    def __cut_DAG(self, sentence: str) -> Iterator[Pair]:
+    def _cut_dag(self, sentence: str) -> Iterator[Pair]:
         DAG = self.tokenizer.get_DAG(sentence)
-        route = {}
+        route: dict[int, tuple[float, int]] = {}
 
         self.tokenizer.calc(sentence, DAG, route)
 
@@ -186,9 +226,7 @@ class POSTokenizer:
                     if len(buf) == 1:
                         yield Pair(buf, self.word_tag_tab.get(buf, "x"))
                     elif not self.tokenizer.FREQ.get(buf):
-                        recognized = self.__cut_detail(buf)
-                        for t in recognized:
-                            yield t
+                        yield from self._cut_detail(buf)
                     else:
                         for elem in buf:
                             yield Pair(elem, self.word_tag_tab.get(elem, "x"))
@@ -200,20 +238,15 @@ class POSTokenizer:
             if len(buf) == 1:
                 yield Pair(buf, self.word_tag_tab.get(buf, "x"))
             elif not self.tokenizer.FREQ.get(buf):
-                recognized = self.__cut_detail(buf)
-                for t in recognized:
-                    yield t
+                yield from self._cut_detail(buf)
             else:
                 for elem in buf:
                     yield Pair(elem, self.word_tag_tab.get(elem, "x"))
 
-    def __cut_internal(self, sentence: str, HMM: bool = True) -> Iterator[Pair]:
+    def _cut_internal(self, sentence: str, HMM: bool = True) -> Iterator[Pair]:
         self.makesure_userdict_loaded()
         blocks = re_han_internal.split(sentence)
-        if HMM:
-            cut_blk = self.__cut_DAG
-        else:
-            cut_blk = self.__cut_DAG_NO_HMM
+        cut_blk = self._cut_dag if HMM else self._cut_dag_no_hmm
 
         for blk in blocks:
             if re_han_internal.match(blk):
@@ -232,22 +265,23 @@ class POSTokenizer:
                                 yield Pair(xx, "x")
 
     def _lcut_internal(self, sentence: str) -> list[Pair]:
-        return list(self.__cut_internal(sentence))
+        return list(self._cut_internal(sentence))
 
     def _lcut_internal_no_hmm(self, sentence: str) -> list[Pair]:
-        return list(self.__cut_internal(sentence, False))
+        return list(self._cut_internal(sentence, False))
 
-    def cut(self, sentence: str, HMM: bool = True):  # -> Iterator[Pair]
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def cut(self, sentence: str, HMM: bool = True) -> Iterator[Pair]:
         self.makesure_userdict_loaded()
 
         if HMM:
-            cuter = self.__cut
-        else:
-            cuter = self.tokenizer.cut
-
-        if HMM:
+            cuter = self._cut
             blocks = re_han_detail.split(sentence)
         else:
+            cuter = self.tokenizer.cut
             blocks = jieba_next.re_han_default.split(sentence)
 
         for blk in blocks:
@@ -296,7 +330,7 @@ def _lcut(*args, **kwargs):
         DeprecationWarning,
         stacklevel=2,
     )
-    return dt._lcut(*args, **kwargs)
+    return dt._lcut_internal(*args, **kwargs)
 
 
 def _lcut_no_hmm(*args, **kwargs):
@@ -305,15 +339,15 @@ def _lcut_no_hmm(*args, **kwargs):
         DeprecationWarning,
         stacklevel=2,
     )
-    return dt._lcut_no_hmm(*args, **kwargs)
+    return dt._lcut_internal_no_hmm(*args, **kwargs)
 
 
 # Explicit public API for posseg
 __all__ = [
-    "Pair",
     "POSTokenizer",
-    "dt",
+    "Pair",
     "cut",
-    "lcut",
+    "dt",
     "initialize",
+    "lcut",
 ]

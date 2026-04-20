@@ -2,13 +2,15 @@ from __future__ import annotations
 
 from operator import itemgetter
 from pathlib import Path
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
+from typing import TYPE_CHECKING, Any
 
 import jieba_next
 import jieba_next.posseg
+from jieba_next.exceptions import DictionaryNotFoundError
+from jieba_next.posseg import Pair
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Iterator, Sequence
 
 DEFAULT_IDF = Path(__file__).parent / "idf.txt"
 
@@ -50,8 +52,10 @@ class KeywordExtractor:
 
     def set_stop_words(self, stop_words_path: str | Path) -> None:
         abs_path = Path(stop_words_path).resolve()
-        if not Path(abs_path).is_file():
-            raise Exception("jieba_next: file does not exist: " + abs_path)
+        if not abs_path.is_file():
+            raise DictionaryNotFoundError(
+                f"jieba_next: file does not exist: {abs_path}"
+            )
         with abs_path.open(encoding="utf-8") as f:
             for line in f:
                 self.stop_words.add(line.strip())
@@ -73,8 +77,9 @@ class IDFLoader:
             self.set_new_path(idf_path)
 
     def set_new_path(self, new_idf_path: str | Path) -> None:
-        if self.path != new_idf_path:
-            self.path = new_idf_path
+        new_path_str = str(new_idf_path)
+        if self.path != new_path_str:
+            self.path = new_path_str
             with Path(new_idf_path).open(encoding="utf-8") as f:
                 self.idf_freq = {}
                 for line in f:
@@ -103,10 +108,65 @@ class TFIDF(KeywordExtractor):
 
     def set_idf_path(self, idf_path: str | Path) -> None:
         new_abs_path = Path(idf_path).resolve()
-        if not Path(new_abs_path).is_file():
-            raise Exception("jieba_next: file does not exist: " + new_abs_path)
+        if not new_abs_path.is_file():
+            raise DictionaryNotFoundError(
+                f"jieba_next: file does not exist: {new_abs_path}"
+            )
         self.idf_loader.set_new_path(new_abs_path)
         self.idf_freq, self.median_idf = self.idf_loader.get_idf()
+
+    # ------------------------------------------------------------------
+    # Internal helpers (testable in isolation)
+    # ------------------------------------------------------------------
+
+    def _iter_candidate_words(
+        self,
+        sentence: str,
+        allow_pos: frozenset[str] | None,
+    ) -> Iterator[str | Pair]:
+        """Yield ``Pair`` (if ``allow_pos`` is set) or ``str`` tokens."""
+        if allow_pos is not None:
+            for pair in self.postokenizer.cut(sentence):
+                if pair.flag in allow_pos:
+                    yield pair
+        else:
+            yield from self.tokenizer.cut(sentence)
+
+    def _accumulate_freq(
+        self,
+        words: Iterable[str | Pair],
+        *,
+        use_pair_key: bool,
+    ) -> dict[Any, float]:
+        """Count occurrences with either ``Pair`` or ``str`` as dict key.
+
+        ``use_pair_key`` is True only when caller asked for both allowPOS and
+        withFlag; in that case the dict key is a ``Pair`` so the original
+        POS flag survives to the final output.
+        """
+        freq: dict[Any, float] = {}
+        for w in words:
+            if isinstance(w, Pair):
+                text = w.word
+                key: Any = w if use_pair_key else w.word
+            else:
+                text = w
+                key = w
+            if len(text.strip()) < 2 or text.lower() in self.stop_words:
+                continue
+            freq[key] = freq.get(key, 0.0) + 1.0
+        return freq
+
+    def _apply_idf(self, freq: dict[Any, float]) -> None:
+        total = sum(freq.values())
+        scale = 1.0 / (total or 1.0)
+        for k in freq:
+            text = k.word if isinstance(k, Pair) else k
+            freq[k] *= self.idf_freq.get(text, self.median_idf) * scale
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
 
     def extract_tags(
         self,
@@ -116,46 +176,24 @@ class TFIDF(KeywordExtractor):
         allowPOS: Sequence[str] | tuple[str, ...] = (),
         withFlag: bool = False,
     ) -> list | list[tuple[str, float]]:
+        """Extract keywords from sentence using TF-IDF.
+
+        Parameters:
+            topK: return how many top keywords. ``None`` for all possible words.
+            withWeight: if True, return a list of ``(word, weight)``; if False,
+                return a list of words.
+            allowPOS: the allowed POS list (e.g. ``['ns', 'n', 'vn', 'v','nr']``).
+                If a word's POS is not in this list, it is filtered out.
+            withFlag: only meaningful when ``allowPOS`` is non-empty. If True,
+                return a list of ``Pair(word, weight)`` (like :func:`posseg.cut`);
+                otherwise return a list of ``str``.
         """
-        Extract keywords from sentence using TF-IDF algorithm.
-        Parameter:
-            - topK: return how many top keywords. `None` for all possible words.
-            - withWeight: if True, return a list of (word, weight);
-                          if False, return a list of words.
-            - allowPOS: the allowed POS list eg. ['ns', 'n', 'vn', 'v','nr'].
-                        if the POS of w is not in this list,it will be filtered.
-            - withFlag: only work with allowPOS is not empty.
-                        if True, return a list of pair(word, weight) like posseg.cut
-                        if False, return a list of words
-        """
-        if allowPOS:
-            allow_pos_frozen = frozenset(allowPOS)
-            words_iter = self.postokenizer.cut(sentence)
-        else:
-            allow_pos_frozen = None
-            words_iter = self.tokenizer.cut(sentence)
-        freq: dict[object, float] = {}
-        for w in words_iter:  # w may be Pair or str
-            if allow_pos_frozen:
-                if w.flag not in allow_pos_frozen:
-                    continue
-                if not withFlag:
-                    w = w.word
-            wc = w.word if allow_pos_frozen and withFlag else w
-            if isinstance(wc, str):
-                if len(wc.strip()) < 2 or wc.lower() in self.stop_words:
-                    continue
-            freq[w] = freq.get(w, 0.0) + 1.0
-        total = sum(freq.values())
-        for k in list(freq.keys()):
-            if allowPOS and withFlag:
-                kw = k.word
-            elif allowPOS and not withFlag:  # Pair already converted to str
-                kw = k
-            else:
-                kw = k if isinstance(k, str) else k  # may be str
-            key_str = kw if isinstance(kw, str) else getattr(kw, "word", str(kw))
-            freq[k] *= self.idf_freq.get(key_str, self.median_idf) / (total or 1.0)
+        allow_pos = frozenset(allowPOS) if allowPOS else None
+        use_pair_key = allow_pos is not None and withFlag
+
+        words = self._iter_candidate_words(sentence, allow_pos)
+        freq = self._accumulate_freq(words, use_pair_key=use_pair_key)
+        self._apply_idf(freq)
 
         if withWeight:
             tags: list = sorted(freq.items(), key=itemgetter(1), reverse=True)
@@ -163,5 +201,4 @@ class TFIDF(KeywordExtractor):
             tags = sorted(freq, key=freq.__getitem__, reverse=True)
         if topK:
             return tags[:topK]
-        else:
-            return tags
+        return tags
